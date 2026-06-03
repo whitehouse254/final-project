@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Victor's Supermarket POS</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <style>
+        :root { --primary: #00b4d8; --primary-dark: #0077b6; --secondary: #1a1a2e; --accent: #f72585; }
+        body { background: linear-gradient(135deg, #0f2027, #203a43, #2c5364); font-family: 'Poppins', sans-serif; color: #f0f0f0; }
+        .wrapper { display: flex; width: 100%; }
+        #sidebar { min-width: 280px; background: rgba(0,0,0,0.6); backdrop-filter: blur(12px); border-right: 1px solid rgba(255,255,255,0.2); }
+        #sidebar .sidebar-header { padding: 20px; background: linear-gradient(135deg, var(--primary), var(--primary-dark)); text-align: center; }
+        #sidebar ul li a { padding: 12px 25px; display: flex; align-items: center; gap: 12px; color: #e0e0e0; text-decoration: none; transition: 0.2s; border-left: 3px solid transparent; }
+        #sidebar ul li a:hover { background: rgba(0,180,216,0.2); border-left-color: var(--primary); padding-left: 30px; }
+        #content { width: 100%; padding: 20px; min-height: 100vh; }
+        .card { background: rgba(255,255,255,0.08); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.2); border-radius: 1rem; margin-bottom: 1.5rem; }
+        .card-header { background: rgba(0,0,0,0.3); border-bottom: 1px solid rgba(255,255,255,0.2); font-weight: 700; }
+        .stat-card { background: rgba(0,0,0,0.5); border-radius: 1rem; padding: 1rem; text-align: center; transition: 0.2s; }
+        .stat-card:hover { transform: translateY(-5px); background: rgba(0,180,216,0.2); }
+        .stat-number { font-size: 2rem; font-weight: 800; color: var(--primary); }
+        .btn { border-radius: 2rem; font-weight: 600; }
+        .btn-primary { background: var(--primary); border: none; color: #1a1a2e; }
+        .btn-primary:hover { background: var(--primary-dark); transform: translateY(-2px); }
+        .table { color: #fff; background: rgba(0,0,0,0.4); border-radius: 0.75rem; overflow: hidden; }
+        .table thead th { background: rgba(0,180,216,0.3); }
+        .table tbody tr:hover { background: rgba(255,255,255,0.1); }
+        .form-control, .form-select { background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: #fff; }
+        .form-control:focus { background: rgba(255,255,255,0.2); border-color: var(--primary); }
+        footer { text-align: center; margin-top: 2rem; padding: 1rem; color: #aaa; border-top: 1px solid rgba(255,255,255,0.1); }
+        .login-container { max-width: 400px; margin: 100px auto; background: rgba(0,0,0,0.6); backdrop-filter: blur(15px); border-radius: 1.5rem; padding: 2rem; }
+        .modal-content { background: rgba(0,0,0,0.85); backdrop-filter: blur(12px); color: white; }
+    </style>
+</head>
+<body>
+<div class="wrapper" id="app" style="display:none;">
+    <nav id="sidebar">
+        <div class="sidebar-header"><h3><i class="fas fa-store"></i> Victor's POS</h3></div>
+        <ul class="list-unstyled components">
+            <li><a href="#" onclick="loadTab('dashboard')"><i class="fas fa-tachometer-alt"></i> Dashboard</a></li>
+            <li><a href="#" onclick="loadTab('sales')"><i class="fas fa-shopping-cart"></i> Point of Sale</a></li>
+            <li><a href="#" onclick="loadTab('products')"><i class="fas fa-boxes"></i> Products</a></li>
+            <li><a href="#" onclick="loadTab('returns')"><i class="fas fa-undo-alt"></i> Returns</a></li>
+            <li><a href="#" onclick="loadTab('reports')"><i class="fas fa-chart-line"></i> Reports</a></li>
+            <li><a href="#" onclick="loadTab('loyalty')"><i class="fas fa-gem"></i> Loyalty</a></li>
+            <li><a href="#" onclick="loadTab('expenses')"><i class="fas fa-money-bill-wave"></i> Expenses</a></li>
+            <li><a href="#" onclick="loadTab('shifts')"><i class="fas fa-clock"></i> Shifts</a></li>
+            <li><a href="#" onclick="loadTab('quotations')"><i class="fas fa-file-invoice"></i> Quotations</a></li>
+            <li><a href="#" onclick="loadTab('deliveries')"><i class="fas fa-truck"></i> Deliveries</a></li>
+            <li><a href="#" onclick="loadTab('users')"><i class="fas fa-users"></i> Users</a></li>
+            <li><a href="#" onclick="logout()"><i class="fas fa-sign-out-alt"></i> Logout</a></li>
+        </ul>
+    </nav>
+    <div id="content">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h4><i class="fas fa-cash-register me-2"></i>Victor's Supermarket</h4>
+            <div><span id="userNameDisplay" class="me-3"></span></div>
+        </div>
+        <div id="pageContent"></div>
+        <footer>&copy; 2025 Victor's Supermarket - Next‑Gen POS</footer>
+    </div>
+</div>
+<div id="loginScreen" class="login-container">
+    <h3 class="text-center mb-4"><i class="fas fa-lock me-2"></i>Login</h3>
+    <input type="text" id="loginUsername" class="form-control mb-3" placeholder="Username">
+    <input type="password" id="loginPassword" class="form-control mb-3" placeholder="Password">
+    <button class="btn btn-primary w-100" onclick="login()">Login</button>
+    <div class="text-center mt-3 small">victor / victor@123</div>
+</div>
+
+<script>
+    const API = 'http://localhost:5000/api';
+    let cart = [];
+    let currentUser = null;
+
+    // -------------------- AUTH --------------------
+    async function login() {
+        const username = document.getElementById('loginUsername').value;
+        const password = document.getElementById('loginPassword').value;
+        try {
+            const res = await fetch(`${API}/login`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, password })
+            });
+            const data = await res.json();
+            if (data.status === 'success') {
+                currentUser = data.user;
+                localStorage.setItem('user', JSON.stringify(currentUser));
+                document.getElementById('loginScreen').style.display = 'none';
+                document.getElementById('app').style.display = 'flex';
+                document.getElementById('userNameDisplay').innerHTML = `<i class="fas fa-user-circle me-1"></i> ${currentUser.full_name || currentUser.username}`;
+                loadTab('dashboard');
+                // If loyalty is empty, seed more customers
+                checkAndSeedLoyalty();
+            } else alert('Invalid credentials');
+        } catch (err) { alert('Cannot connect to server. Is backend running?'); }
+    }
+
+    async function logout() {
+        await fetch(`${API}/logout`, { method: 'POST' });
+        localStorage.removeItem('user');
+        currentUser = null;
+        cart = [];
+        document.getElementById('app').style.display = 'none';
+        document.getElementById('loginScreen').style.display = 'block';
+    }
+
+    // -------------------- Helper --------------------
+    async function fetchJSON(url, options = {}) {
+        const res = await fetch(url, options);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.json();
+    }
+
+    function escapeHtml(str) { return String(str).replace(/[&<>]/g, function(m){ if(m==='&') return '&amp;'; if(m==='<') return '&lt;'; if(m==='>') return '&gt;'; return m;}); }
+
+    // Seed more loyalty customers if needed
+    async function checkAndSeedLoyalty() {
+        const loyalty = await fetchJSON(`${API}/loyalty`);
+        if (loyalty.length < 20) {
+            const sampleNames = ['Alice Wanjiku', 'Brian Kimani', 'Carol Otieno', 'David Mwangi', 'Eunice Achieng', 'Francis Omondi', 'Grace Nduta', 'Henry Kipchoge', 'Irene Chebet', 'James Kariuki', 'Kennedy Ochieng', 'Lilian Njeri', 'Michael Mburu', 'Nancy Wambui', 'Oscar Maina', 'Peter Njoroge', 'Quinter Akinyi', 'Ruth Akoth', 'Samuel Odhiambo', 'Teresa Adhiambo'];
+            for (let name of sampleNames) {
+                const phone = `07${Math.floor(Math.random()*90000000+10000000)}`;
+                await fetch(`${API}/loyalty`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, phone, points: Math.floor(Math.random()*500) }) }).catch(e=>console.log);
+            }
+            console.log('Seeded additional loyalty customers');
+        }
+    }
+
+    // -------------------- TAB RENDERING --------------------
+    async function loadTab(tab) {
+        if (tab === 'dashboard') await renderDashboard();
+        else if (tab === 'sales') await renderSales();
+        else if (tab === 'products') await renderProducts();
+        else if (tab === 'returns') renderReturns();
+        else if (tab === 'reports') await renderReports();
+        else if (tab === 'loyalty') await renderLoyalty();
+        else if (tab === 'expenses') await renderExpenses();
+        else if (tab === 'shifts') await renderShifts();
+        else if (tab === 'quotations') await renderQuotations();
+        else if (tab === 'deliveries') await renderDeliveries();
+        else if (tab === 'users') await renderUsers();
+    }
+
+    // -------------------- DASHBOARD (improved) --------------------
+    async function renderDashboard() {
+        const stats = await fetchJSON(`${API}/reports/dashboard`);
+        const lowStock = await fetchJSON(`${API}/products?low_stock=true`); // backend may not support, fallback to client filter
+        const productsAll = await fetchJSON(`${API}/products`);
+        const lowStockItems = productsAll.filter(p => p.quantity <= (p.min_stock || 5));
+        const recentSales = await fetchJSON(`${API}/reports/sales`);
+        const topSales = recentSales.slice(0,5);
+        document.getElementById('pageContent').innerHTML = `
+            <div class="row g-3">
+                <div class="col-md-3"><div class="stat-card"><div class="stat-number">${stats.total_products}</div><div>Products</div></div></div>
+                <div class="col-md-3"><div class="stat-card"><div class="stat-number">${stats.low_stock}</div><div>Low Stock</div></div></div>
+                <div class="col-md-3"><div class="stat-card"><div class="stat-number">KES ${stats.today_sales.toLocaleString()}</div><div>Today's Sales</div></div></div>
+                <div class="col-md-3"><div class="stat-card"><div class="stat-number">KES ${stats.total_sales.toLocaleString()}</div><div>Total Sales</div></div></div>
+            </div>
+            <div class="row mt-3">
+                <div class="col-md-6"><div class="card"><div class="card-header">⚠️ Low Stock Items</div><div class="card-body">${lowStockItems.length ? '<ul>' + lowStockItems.map(p=>`<li>${p.name} - Stock: ${p.quantity} (Min: ${p.min_stock||5})</li>`).join('') + '</ul>' : '<div class="text-muted">No low stock items</div>'}</div></div></div>
+                <div class="col-md-6"><div class="card"><div class="card-header">🏆 Recent Sales</div><div class="card-body">${topSales.length ? '<ul>' + topSales.map(s=>`<li>Invoice ${s.invoice_no}: KES ${s.net_amount} (${s.sale_date.split('T')[0]})</li>`).join('') + '</ul>' : '<div class="text-muted">No recent sales</div>'}</div></div></div>
+            </div>
+        `;
+    }
+
+    // -------------------- SALES (with print receipt prompt) --------------------
+    async function renderSales() {
+        const products = await fetchJSON(`${API}/products`);
+        let productHtml = '<table class="table table-sm"><thead><tr><th>Name</th><th>Price</th><th>Stock</th><th></th></tr></thead><tbody>';
+        products.forEach(p => {
+            productHtml += `<td><td>${escapeHtml(p.name)}</td><td>KES ${p.selling_price}</td><td>${p.quantity}</td><td><button class="btn btn-sm btn-primary" onclick="addToCart(${p.id},'${escapeHtml(p.name)}',${p.selling_price},${p.quantity})">Add</button></td></tr>`;
+        });
+        productHtml += '</tbody></table>';
+        document.getElementById('pageContent').innerHTML = `
+            <div class="row"><div class="col-md-7"><div class="card"><div class="card-header">📦 Products</div><div class="card-body" style="max-height:500px; overflow-y:auto;">${productHtml}</div></div></div>
+            <div class="col-md-5"><div class="card"><div class="card-header">🛒 Cart</div><div class="card-body" id="cartContainer"></div></div></div></div>
+            <div class="modal fade" id="receiptModal" tabindex="-1"><div class="modal-dialog modal-lg"><div class="modal-content"><div class="modal-header bg-success text-white"><h5>🧾 Receipt Preview</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body" id="receiptContent"></div><div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button><button type="button" id="confirmPurchaseBtn" class="btn btn-success">Confirm Purchase</button></div></div></div></div>
+        `;
+        renderCart();
+        document.getElementById('confirmPurchaseBtn').onclick = () => confirmCheckout();
+    }
+
+    function addToCart(id, name, price, stock) {
+        let existing = cart.find(i => i.id === id);
+        if (existing) { if (existing.qty + 1 > stock) { alert('Not enough stock'); return; } existing.qty++; }
+        else { if (1 > stock) { alert('Out of stock'); return; } cart.push({ id, name, price, qty: 1 }); }
+        renderCart();
+    }
+
+    function renderCart() {
+        if (cart.length === 0) { document.getElementById('cartContainer').innerHTML = '<div class="text-center text-muted">Cart empty</div>'; return; }
+        let total=0, html='<table class="table table-sm"><thead><tr><th>Item</th><th>Price</th><th>Qty</th><th>Subtotal</th><th></th></tr></thead><tbody>';
+        cart.forEach((item,idx) => {
+            const sub = item.price * item.qty; total += sub;
+            html += `<tr><td>${escapeHtml(item.name)}</td><td>KES ${item.price}</td><td><input type="number" min="1" value="${item.qty}" class="form-control form-control-sm" style="width:70px" onchange="updateCartQty(${idx},this.value)"></td><td>KES ${sub.toFixed(2)}</td><td><button class="btn btn-sm btn-danger" onclick="removeCartItem(${idx})"><i class="fas fa-trash"></i></button></td></tr>`;
+        });
+        html += `</tbody><tfoot><tr><td colspan="3" class="text-end"><strong>Total</strong></td><td><strong>KES ${total.toFixed(2)}</strong></td><td></td></tr></tfoot></table>`;
+        html += `<div class="mt-2"><label>Discount (%)</label><input type="number" id="discountPercent" class="form-control mb-2" value="0" min="0" max="50"><label>Payment Method</label><select id="paymentMethod" class="form-select mb-2"><option>Cash</option><option>Card</option><option>MPESA</option><option>Bank Transfer</option></select><button class="btn btn-success w-100" onclick="showReceiptPreview()">Proceed to Receipt</button></div>`;
+        document.getElementById('cartContainer').innerHTML = html;
+    }
+
+    function updateCartQty(idx,newQty) { if (newQty<1) cart.splice(idx,1); else cart[idx].qty = parseInt(newQty); renderCart(); }
+    function removeCartItem(idx) { cart.splice(idx,1); renderCart(); }
+
+    let pendingCheckout = null;
+    function showReceiptPreview() {
+        if (cart.length===0) return alert('Cart empty');
+        const discountPercent = parseFloat(document.getElementById('discountPercent').value)||0;
+        const subtotal = cart.reduce((s,i)=>s+i.price*i.qty,0);
+        const discountAmount = subtotal * discountPercent/100;
+        const taxable = subtotal - discountAmount;
+        const tax = taxable * 0.16;
+        const netTotal = taxable + tax;
+        const paymentMethod = document.getElementById('paymentMethod').value;
+        const customerName = prompt('Customer name:', 'Walk-in Customer') || 'Walk-in';
+        const customerPhone = prompt('Customer phone:', '');
+        let itemsHtml = '<table class="table table-sm"><thead><tr><th>Item</th><th>Qty</th><th>Price</th><th>Total</th></tr></thead><tbody>';
+        cart.forEach(item => { itemsHtml += `<tr><td>${escapeHtml(item.name)}</td><td>${item.qty}</td><td>KES ${item.price}</td><td>KES ${(item.price*item.qty).toFixed(2)}</td></tr>`; });
+        itemsHtml += '</tbody></table>';
+        const receiptHtml = `<div style="font-family: monospace; text-align: center;"><h4>Victor's Supermarket</h4><p>${new Date().toLocaleString()}<br>Cashier: ${currentUser?.full_name || 'Cashier'}</p><hr><p><strong>Customer:</strong> ${escapeHtml(customerName)} ${customerPhone ? '('+customerPhone+')' : ''}<br><strong>Payment:</strong> ${paymentMethod}<br><strong>Discount:</strong> KES ${discountAmount.toFixed(2)}</p>${itemsHtml}<hr><p><strong>Subtotal:</strong> KES ${subtotal.toFixed(2)}<br><strong>Tax (16%):</strong> KES ${tax.toFixed(2)}<br><strong>Total:</strong> KES ${netTotal.toFixed(2)}</p><hr><p>Thank you for shopping!</p></div>`;
+        document.getElementById('receiptContent').innerHTML = receiptHtml;
+        pendingCheckout = { cart: cart.map(i=>({id:i.id,name:i.name,quantity:i.qty,price:i.price,total:i.price*i.qty})), discount: discountAmount, payment_method: paymentMethod, customer_name: customerName, customer_phone: customerPhone };
+        new bootstrap.Modal(document.getElementById('receiptModal')).show();
+    }
+
+    async function confirmCheckout() {
+        if (!pendingCheckout) return;
+        const res = await fetch(`${API}/invoices`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(pendingCheckout)
+        });
+        const data = await res.json();
+        if (data.status === 'success') {
+            bootstrap.Modal.getInstance(document.getElementById('receiptModal')).hide();
+            const printReceipt = confirm(`Sale complete! Invoice: ${data.invoice}\nTotal: KES ${data.net_total.toFixed(2)}\n\nPrint receipt?`);
+            if (printReceipt) {
+                const receiptWindow = window.open('', '_blank');
+                receiptWindow.document.write(`<html><head><title>Receipt</title><style>body{font-family:monospace; padding:20px;}</style></head><body><pre>${document.getElementById('receiptContent').innerText}</pre><script>window.print();<\/script></body></html>`);
+                receiptWindow.document.close();
+            }
+            cart = [];
+            renderCart();
+            loadTab('dashboard');
+        } else alert('Error: ' + data.message);
+    }
+
+    // -------------------- PRODUCTS CRUD --------------------
+    async function renderProducts() {
+        const products = await fetchJSON(`${API}/products`);
+        let html = `<div class="card"><div class="card-header d-flex justify-content-between"><span>📦 Products</span><button class="btn btn-sm btn-success" onclick="showAddProduct()">+ Add</button></div><div class="card-body"><table class="table"><thead><tr><th>Name</th><th>Price</th><th>Stock</th><th>Actions</th></tr></thead><tbody>`;
+        if (!products.length) html += '<tr><td colspan="4" class="text-center">No products yet</td></tr>';
+        products.forEach(p => {
+            html += `<tr><td>${escapeHtml(p.name)}</td><td>KES ${p.selling_price}</td><td>${p.quantity}</td><td><button class="btn btn-sm btn-warning" onclick="editProduct(${p.id},'${escapeHtml(p.name)}',${p.selling_price},${p.quantity},${p.min_stock||5})">Edit</button> <button class="btn btn-sm btn-danger" onclick="deleteProduct(${p.id})">Del</button> <button class="btn btn-sm btn-info" onclick="updateStock(${p.id})">Stock</button></td></tr>`;
+        });
+        html += '</tbody></table></div></div>';
+        document.getElementById('pageContent').innerHTML = html;
+    }
+
+    function showAddProduct() {
+        const name = prompt('Product name:');
+        if (!name) return;
+        const price = parseFloat(prompt('Price:'));
+        if (isNaN(price)) return;
+        const qty = parseInt(prompt('Quantity:',0));
+        fetch(`${API}/products`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ name, selling_price:price, quantity:qty||0 }) }).then(()=>renderProducts());
+    }
+    async function editProduct(id, oldName, oldPrice, oldQty, oldMin) {
+        const name = prompt('New name:', oldName);
+        if (!name) return;
+        const price = parseFloat(prompt('New price:', oldPrice));
+        if (isNaN(price)) return;
+        const qty = parseInt(prompt('New quantity:', oldQty));
+        await fetch(`${API}/products/${id}`, { method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ name, selling_price:price, quantity:qty, min_stock:oldMin }) });
+        renderProducts();
+    }
+    async function deleteProduct(id) { if(confirm('Delete?')) { await fetch(`${API}/products/${id}`, { method:'DELETE' }); renderProducts(); } }
+    async function updateStock(id) { const newQty = prompt('New stock quantity:'); if(newQty && !isNaN(newQty)) await fetch(`${API}/products/${id}/stock`, { method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ quantity: parseInt(newQty) }) }); renderProducts(); }
+
+    // -------------------- RETURNS --------------------
+    function renderReturns() {
+        document.getElementById('pageContent').innerHTML = `<div class="card"><div class="card-header">🔄 Process Return</div><div class="card-body"><input type="text" id="returnInvoice" class="form-control mb-2" placeholder="Invoice Number"><button class="btn btn-warning" onclick="processReturn()">Process Return</button><div id="returnResult" class="mt-3"></div></div></div>`;
+    }
+    async function processReturn() {
+        const invoice = document.getElementById('returnInvoice').value;
+        if (!invoice) return alert('Enter invoice number');
+        const res = await fetch(`${API}/returns`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ invoice_no:invoice }) });
+        const data = await res.json();
+        if (data.status === 'success') document.getElementById('returnResult').innerHTML = `<div class="alert alert-success">Return processed. Refund: KES ${data.refund}</div>`;
+        else document.getElementById('returnResult').innerHTML = `<div class="alert alert-danger">${data.message}</div>`;
+    }
+
+    // -------------------- REPORTS --------------------
+    async function renderReports() {
+        const sales = await fetchJSON(`${API}/reports/sales`);
+        let html = '<div class="card"><div class="card-header">📊 Sales Report</div><div class="card-body"><table class="table"><thead><tr><th>Invoice</th><th>Customer</th><th>Date</th><th>Amount</th></tr></thead><tbody>';
+        if (!sales.length) html += '<tr><td colspan="4" class="text-center">No sales yet</td></tr>';
+        sales.forEach(s => { html += `<tr><td>${s.invoice_no}</td><td>${s.customer_name || 'Guest'}</td><td>${s.sale_date.split('T')[0]}</td><td>KES ${s.net_amount}</td></tr>`; });
+        html += '</tbody></tr></div></div>';
+        document.getElementById('pageContent').innerHTML = html;
+    }
+
+    // -------------------- LOYALTY --------------------
+    async function renderLoyalty() {
+        let customers = await fetchJSON(`${API}/loyalty`);
+        let html = `<div class="card"><div class="card-header d-flex justify-content-between"><span>💎 Loyalty Customers</span><button class="btn btn-sm btn-success" onclick="addLoyaltyCustomer()">+ Add</button></div><div class="card-body"><table class="table"><thead><tr><th>Name</th><th>Phone</th><th>Points</th><th>Spent</th></tr></thead><tbody>`;
+        if (!customers.length) html += '<tr><td colspan="4" class="text-center">No loyalty customers. Click + to add.</td></tr>';
+        customers.forEach(c => { html += `<tr><td>${escapeHtml(c.customer_name)}</td><td>${c.customer_phone}</td><td>${c.points}</td><td>KES ${c.total_spent || 0}</td></tr>`; });
+        html += '</tbody></table></div></div>';
+        document.getElementById('pageContent').innerHTML = html;
+    }
+    function addLoyaltyCustomer() {
+        const name = prompt('Customer name:');
+        if (!name) return;
+        const phone = prompt('Phone number:');
+        if (!phone) return;
+        fetch(`${API}/loyalty`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ name, phone }) }).then(()=>renderLoyalty());
+    }
+
+    // -------------------- EXPENSES --------------------
+    async function renderExpenses() {
+        const expenses = await fetchJSON(`${API}/expenses`);
+        let html = `<div class="card"><div class="card-header d-flex justify-content-between"><span>💰 Expenses</span><button class="btn btn-sm btn-success" onclick="addExpense()">+ Add</button></div><div class="card-body"><table class="table"><thead><tr><th>Date</th><th>Category</th><th>Amount</th><th>Description</th></tr></thead><tbody>`;
+        if (!expenses.length) html += '<tr><td colspan="4" class="text-center">No expenses recorded</td></tr>';
+        expenses.forEach(e => { html += `<tr><td>${e.expense_date}</td><td>${e.category}</td><td>KES ${e.amount}</td><td>${e.description || ''}</td></tr>`; });
+        html += '</tbody></table></div></div>';
+        document.getElementById('pageContent').innerHTML = html;
+    }
+    function addExpense() {
+        const category = prompt('Category:');
+        if (!category) return;
+        const amount = parseFloat(prompt('Amount:'));
+        if (isNaN(amount)) return;
+        const desc = prompt('Description (optional):') || '';
+        fetch(`${API}/expenses`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ category, amount, description:desc }) }).then(()=>renderExpenses());
+    }
+
+    // -------------------- SHIFTS --------------------
+    async function renderShifts() {
+        const shifts = await fetchJSON(`${API}/shifts`);
+        const current = await fetchJSON(`${API}/shifts/current`);
+        let html = `<div class="card"><div class="card-header">⏱️ Shifts</div><div class="card-body">`;
+        if (current.active) html += `<div class="alert alert-info">Active shift: ${current.cashier_name} (started ${current.start_time})<br><button class="btn btn-danger mt-2" onclick="endShift()">End Shift</button></div>`;
+        else html += `<button class="btn btn-success" onclick="startShift()">Start Shift</button>`;
+        html += `<hr><table class="table"><thead><tr><th>Cashier</th><th>Start</th><th>End</th><th>Sales</th><th>Status</th></tr></thead><tbody>`;
+        if (!shifts.length) html += '<tr><td colspan="5" class="text-center">No shifts recorded</td></tr>';
+        shifts.forEach(s => { html += `<tr><td>${s.cashier_name}</td><td>${s.start_time}</td><td>${s.end_time || 'Active'}</td><td>KES ${s.total_sales}</td><td>${s.status}</td></tr>`; });
+        html += '</tbody></table></div></div>';
+        document.getElementById('pageContent').innerHTML = html;
+    }
+    async function startShift() { await fetch(`${API}/shifts/start`, { method:'POST' }); renderShifts(); }
+    async function endShift() { await fetch(`${API}/shifts/end`, { method:'POST' }); renderShifts(); }
+
+    // -------------------- QUOTATIONS --------------------
+    async function renderQuotations() {
+        const quotes = await fetchJSON(`${API}/quotations`);
+        let html = `<div class="card"><div class="card-header d-flex justify-content-between"><span>📄 Quotations</span><button class="btn btn-sm btn-success" onclick="showCreateQuotation()">+ New</button></div><div class="card-body"><table class="table"><thead><tr><th>Quote No</th><th>Customer</th><th>Date</th><th>Total</th><th>Status</th><th>Action</th></tr></thead><tbody>`;
+        if (!quotes.length) html += '<tr><td colspan="6" class="text-center">No quotations</td></tr>';
+        quotes.forEach(q => { html += `<tr><td>${q.quote_no}</td><td>${q.customer_name}</td><td>${q.quote_date}</td><td>KES ${q.total}</td><td>${q.status}</td><td><button class="btn btn-sm btn-primary" onclick="convertQuote(${q.id})">Convert</button></td></tr>`; });
+        html += '</tbody></tr></div></div>';
+        document.getElementById('pageContent').innerHTML = html;
+    }
+    function showCreateQuotation() { alert('Use the Sales tab to create a sale directly. For advanced quotation, use the enhanced version.'); }
+    async function convertQuote(id) { const res = await fetch(`${API}/quotations/${id}/convert`, { method:'POST' }); const data = await res.json(); alert(data.status === 'success' ? `Converted! Invoice: ${data.invoice}` : 'Error'); renderQuotations(); }
+
+    // -------------------- DELIVERIES --------------------
+    async function renderDeliveries() {
+        const deliveries = await fetchJSON(`${API}/deliveries`);
+        let html = `<div class="card"><div class="card-header d-flex justify-content-between"><span>🚚 Deliveries</span><button class="btn btn-sm btn-success" onclick="showCreateDelivery()">+ Assign</button></div><div class="card-body"><table class="table"><thead><tr><th>Invoice</th><th>Address</th><th>Driver</th><th>Status</th><th>Action</th></tr></thead><tbody>`;
+        if (!deliveries.length) html += '<tr><td colspan="5" class="text-center">No deliveries</td></tr>';
+        deliveries.forEach(d => { html += `<tr><td>${d.invoice_no}</td><td>${d.delivery_address}</td><td>${d.driver_name || '-'}</td><td>${d.status}</td><td><button class="btn btn-sm btn-warning" onclick="updateDeliveryStatus(${d.id})">Update</button></td></tr>`; });
+        html += '</tbody></table></div></div>';
+        document.getElementById('pageContent').innerHTML = html;
+    }
+    function showCreateDelivery() {
+        const invoice = prompt('Invoice number:');
+        if (!invoice) return;
+        const address = prompt('Delivery address:');
+        if (!address) return;
+        const driver = prompt('Driver name (optional):') || '';
+        fetch(`${API}/deliveries`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ invoice_no:invoice, address, driver }) }).then(()=>renderDeliveries());
+    }
+    async function updateDeliveryStatus(id) { const status = prompt('New status (pending/shipped/delivered/cancelled):'); if(status) await fetch(`${API}/deliveries/${id}`, { method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ status }) }); renderDeliveries(); }
+
+    // -------------------- USERS MANAGEMENT (new) --------------------
+    async function renderUsers() {
+        const users = await fetchJSON(`${API}/users`);
+        let html = `<div class="card"><div class="card-header d-flex justify-content-between"><span>👥 Users</span><button class="btn btn-sm btn-success" onclick="showAddUser()">+ Add User</button></div><div class="card-body"><table class="table"><thead><tr><th>ID</th><th>Username</th><th>Full Name</th><th>Role</th><th>Action</th></tr></thead><tbody>`;
+        if (!users.length) html += '<tr><td colspan="5" class="text-center">No users</td></tr>';
+        users.forEach(u => { html += `<tr><td>${u.id}</td><td>${u.username}</td><td>${u.full_name}</td><td>${u.role}</td><td><button class="btn btn-sm btn-info" onclick="resetPassword(${u.id})">Reset Password</button></td></tr>`; });
+        html += '</tbody></table></div></div>';
+        document.getElementById('pageContent').innerHTML = html;
+    }
+    function showAddUser() {
+        const username = prompt('Username:');
+        if (!username) return;
+        const password = prompt('Password:');
+        if (!password) return;
+        const full_name = prompt('Full name:');
+        const role = confirm('Admin role?') ? 'admin' : 'cashier';
+        fetch(`${API}/users`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ username, password, full_name, role }) }).then(()=>renderUsers());
+    }
+    async function resetPassword(id) {
+        const newPass = prompt('New password:');
+        if (!newPass) return;
+        await fetch(`${API}/users/${id}/password`, { method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ password: newPass }) });
+        alert('Password updated');
+    }
+
+    // Check existing session
+    const savedUser = localStorage.getItem('user');
+    if (savedUser) {
+        currentUser = JSON.parse(savedUser);
+        document.getElementById('loginScreen').style.display = 'none';
+        document.getElementById('app').style.display = 'flex';
+        document.getElementById('userNameDisplay').innerHTML = `<i class="fas fa-user-circle me-1"></i> ${currentUser.full_name || currentUser.username}`;
+        loadTab('dashboard');
+    } else {
+        document.getElementById('app').style.display = 'none';
+        document.getElementById('loginScreen').style.display = 'block';
+    }
+</script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

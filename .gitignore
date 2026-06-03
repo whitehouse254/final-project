@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+.env
+config.json
+*.db
+*.sqlite3
+*.sqbpro
+.idea/
+.vscode/
+backups/
+*.log
+.DS_Store
