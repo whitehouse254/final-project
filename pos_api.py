@@ -1,27 +1,25 @@
-# pos_api.py - Complete Backend for Victor's Supermarket POS with built‑in DB Admin
+# pos_api.py - Complete Backend with Frontend Serving
 import os
 import hashlib
 import random
 import json
 from datetime import datetime, timedelta
-from flask import Flask, request, jsonify, session, render_template_string
+from flask import Flask, request, jsonify, session, send_from_directory
 from flask_cors import CORS
 import psycopg2
 from psycopg2.extras import RealDictCursor
 
 app = Flask(__name__)
 app.secret_key = 'supermarket-secret-key'
-CORS(app, origins=['http://localhost:5001', 'http://127.0.0.1:5001'])
+CORS(app)  # Allow all origins for simplicity (adjust later if needed)
 
-# PostgreSQL connection
+# PostgreSQL connection from environment variable
 def get_db():
-    return psycopg2.connect(
-        host='localhost',
-        database='pos_db',
-        user='pos_user',
-        password='pos_password',
-        port=5432
-    )
+    database_url = os.environ.get('DATABASE_URL')
+    if not database_url:
+        # Fallback for local development
+        database_url = 'postgresql://pos_user:pos_password@localhost/pos_db'
+    return psycopg2.connect(database_url)
 
 def query_db(sql, params=None, fetch_one=False, commit=False):
     conn = get_db()
@@ -40,7 +38,6 @@ def query_db(sql, params=None, fetch_one=False, commit=False):
 
 # -------------------- INITIALIZE DATABASE TABLES --------------------
 def init_db():
-    # Create tables
     tables = """
     CREATE TABLE IF NOT EXISTS users (
         id SERIAL PRIMARY KEY,
@@ -176,7 +173,7 @@ def init_db():
         query_db("INSERT INTO users (username, password, role, full_name) VALUES (%s, %s, %s, %s)",
                  ("cashier", hashed, "cashier", "Store Cashier"), commit=True)
 
-    # Seed more cashiers if needed
+    # Seed more cashiers
     cashiers = [("john", "john123", "John Doe"), ("mary", "mary123", "Mary Smith")]
     for uname, pwd, fname in cashiers:
         if not query_db("SELECT id FROM users WHERE username=%s", (uname,), fetch_one=True):
@@ -209,7 +206,7 @@ def seed_products():
     product_count = 0
     for cat, names in categories.items():
         for name in names:
-            for _ in range(5):  # create multiple variations
+            for _ in range(5):
                 if product_count >= 520:
                     break
                 buying_price = round(random.uniform(10, 800), 2)
@@ -499,7 +496,7 @@ def update_delivery(did):
     query_db("UPDATE deliveries SET status=%s WHERE id=%s", (data['status'], did), commit=True)
     return jsonify({'status': 'success'})
 
-# ----- User Management (Admin only) -----
+# ----- User Management -----
 @app.route('/api/users', methods=['GET'])
 def get_users():
     users = query_db("SELECT id, username, full_name, role FROM users ORDER BY id")
@@ -542,281 +539,20 @@ def logout():
     session.clear()
     return jsonify({'status': 'success'})
 
-# -------------------- ENHANCED DATABASE ADMIN (Web interface) --------------------
-# Home template for dbadmin
-DBADMIN_HOME_TEMPLATE = '''
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Database Admin – Supermarket POS</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <style>
-        body { background: #f0f2f5; font-family: monospace; padding: 20px; }
-        .container { max-width: 1400px; margin: auto; }
-        h1 { color: #1e466e; }
-        .table-list { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 20px; }
-        .table-list a { background: white; padding: 8px 15px; border-radius: 20px; text-decoration: none; color: #1e466e; border: 1px solid #ccc; }
-        .table-list a:hover { background: #0077b6; color: white; }
-        .query-box { margin: 20px 0; }
-        textarea { width: 100%; font-family: monospace; }
-        .result-table { overflow-x: auto; margin-top: 20px; }
-        table { width: 100%; border-collapse: collapse; background: white; }
-        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-        th { background: #0077b6; color: white; }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>📁 Database Admin – PostgreSQL</h1>
-        <div class="table-list">
-            {% for t in tables %}
-                <a href="/dbadmin/table/{{ t }}">{{ t }}</a>
-            {% endfor %}
-        </div>
-        <div class="query-box card p-3">
-            <h5>Run SQL Query</h5>
-            <form method="post">
-                <textarea name="sql" rows="4" class="form-control" placeholder="SELECT * FROM products LIMIT 10;">{{ sql }}</textarea>
-                <button type="submit" class="btn btn-primary mt-2">Execute</button>
-            </form>
-        </div>
-        {% if result %}
-            <div class="result-table">
-                <h5>Result:</h5>
-                {{ result|safe }}
-            </div>
-        {% endif %}
-    </div>
-</body>
-</html>
-'''
+# -------------------- FRONTEND SERVING --------------------
+# Serve static files from 'pos-frontend' folder (must exist)
+@app.route('/')
+def serve_index():
+    return send_from_directory('pos-frontend', 'index.html')
 
-@app.route('/dbadmin', methods=['GET', 'POST'])
-def dbadmin():
-    """Database admin homepage: list tables and run SQL queries."""
-    if 'user_id' not in session:
-        return "Please login first (use /api/login via POST)", 401
+@app.route('/<path:path>')
+def serve_static(path):
+    return send_from_directory('pos-frontend', path)
 
-    if request.method == 'POST':
-        sql = request.form.get('sql', '')
-        result = None
-        if sql.strip():
-            conn = get_db()
-            cur = conn.cursor()
-            try:
-                cur.execute(sql)
-                if sql.strip().upper().startswith('SELECT'):
-                    rows = cur.fetchall()
-                    colnames = [desc[0] for desc in cur.description] if cur.description else []
-                    # Build HTML table
-                    result = '<div style="overflow-x:auto;"><table class="table table-bordered table-striped"><thead></td>'
-                    for col in colnames:
-                        result += f'<th>{col}</th>'
-                    result += '</thead><tbody>'
-                    for row in rows:
-                        result += '<tr>'
-                        for val in row:
-                            result += f'<td>{val if val is not None else "<i>NULL</i>"}</td>'
-                        result += '</table>'
-                    result += '</tbody></table></div>'
-                    result += f'<p class="text-muted">{len(rows)} rows returned.</p>'
-                else:
-                    conn.commit()
-                    result = f'<div class="alert alert-success">Query executed. {cur.rowcount} row(s) affected.</div>'
-            except Exception as e:
-                result = f'<div class="alert alert-danger">Error: {str(e)}</div>'
-            finally:
-                conn.close()
-        else:
-            result = '<div class="alert alert-warning">Please enter a SQL query.</div>'
-        # Get table list again
-        conn = get_db()
-        cur = conn.cursor()
-        cur.execute("SELECT table_name FROM information_schema.tables WHERE table_schema='public' ORDER BY table_name")
-        tables = [row[0] for row in cur.fetchall()]
-        conn.close()
-        return render_template_string(DBADMIN_HOME_TEMPLATE, tables=tables, result=result, sql=sql)
-    else:
-        conn = get_db()
-        cur = conn.cursor()
-        cur.execute("SELECT table_name FROM information_schema.tables WHERE table_schema='public' ORDER BY table_name")
-        tables = [row[0] for row in cur.fetchall()]
-        conn.close()
-        return render_template_string(DBADMIN_HOME_TEMPLATE, tables=tables, result=None, sql='')
-
-@app.route('/dbadmin/table/<table_name>')
-def dbadmin_view_table(table_name):
-    """View a single table with pagination and actions (edit/delete)."""
-    if 'user_id' not in session:
-        return "Please login first", 401
-
-    page = request.args.get('page', 1, type=int)
-    per_page = 50
-    offset = (page - 1) * per_page
-
-    conn = get_db()
-    cur = conn.cursor()
-    try:
-        # Get column names
-        cur.execute(f"SELECT column_name FROM information_schema.columns WHERE table_name='{table_name}' ORDER BY ordinal_position")
-        columns = [row[0] for row in cur.fetchall()]
-        if not columns:
-            conn.close()
-            return f"Table '{table_name}' not found.", 404
-
-        # Get row count
-        cur.execute(f"SELECT COUNT(*) FROM {table_name}")
-        total_rows = cur.fetchone()[0]
-        total_pages = (total_rows + per_page - 1) // per_page
-
-        # Get data
-        cur.execute(f"SELECT * FROM {table_name} LIMIT %s OFFSET %s", (per_page, offset))
-        rows = cur.fetchall()
-    except Exception as e:
-        conn.close()
-        return f"Error: {e}", 500
-    conn.close()
-
-    # Build HTML
-    html = f'''
-    <div class="container">
-        <h2>Table: {table_name}</h2>
-        <div class="mb-3">
-            <a href="/dbadmin" class="btn btn-secondary">← Back to Admin</a>
-            <button class="btn btn-danger" onclick="if(confirm('Delete ALL rows? This cannot be undone.')) window.location='/dbadmin/truncate/{table_name}';">Truncate Table</button>
-        </div>
-        <div class="table-responsive">
-            <table class="table table-bordered table-striped">
-                <thead>
-                    <tr>
-                        {"".join(f"<th>{col}</th>" for col in columns)}
-                        <th>Actions</th>
-                    </tr>
-                </thead>
-                <tbody>
-    '''
-    for idx, row in enumerate(rows):
-        html += '<tr>'
-        for val in row:
-            html += f'<td>{val if val is not None else "<i>NULL</i>"}</td>'
-        # Edit and delete buttons
-        row_id = row[0]  # assumes first column is primary key (usually 'id')
-        html += f'''
-            <td>
-                <button class="btn btn-sm btn-warning" data-bs-toggle="modal" data-bs-target="#editModal{idx}">Edit</button>
-                <a href="/dbadmin/delete/{table_name}/{row_id}" class="btn btn-sm btn-danger" onclick="return confirm('Delete this row?')">Delete</a>
-            </td>
-        </tr>
-        <!-- Edit Modal -->
-        <div class="modal fade" id="editModal{idx}" tabindex="-1">
-            <div class="modal-dialog">
-                <div class="modal-content">
-                    <form action="/dbadmin/update/{table_name}/{row_id}" method="post">
-                        <div class="modal-header"><h5>Edit Row (ID={row_id})</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
-                        <div class="modal-body">
-        '''
-        for i, col in enumerate(columns):
-            html += f'''
-                <div class="mb-2">
-                    <label>{col}</label>
-                    <input type="text" name="{col}" class="form-control" value="{row[i]}">
-                </div>
-            '''
-        html += '''
-                        </div>
-                        <div class="modal-footer">
-                            <button type="submit" class="btn btn-primary">Save</button>
-                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                        </div>
-                    </form>
-                </div>
-            </div>
-        </div>
-        '''
-
-    html += f'''
-                </tbody>
-            </table>
-        </div>
-        <nav><ul class="pagination">
-            {"<li class='page-item'><a class='page-link' href='?page=" + str(page-1) + "'>Previous</a></li>" if page > 1 else ""}
-            <li class='page-item disabled'><span class='page-link'>Page {page} of {total_pages}</span></li>
-            {"<li class='page-item'><a class='page-link' href='?page=" + str(page+1) + "'>Next</a></li>" if page < total_pages else ""}
-        </ul></nav>
-        <p class="text-muted">Total rows: {total_rows}</p>
-    </div>
-    '''
-    return render_template_string(f'''
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>Table: {table_name}</title>
-            <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
-            <style>body {{ background: #f0f2f5; padding: 20px; }}</style>
-        </head>
-        <body>{html}</body>
-        </html>
-    ''')
-
-@app.route('/dbadmin/update/<table_name>/<int:row_id>', methods=['POST'])
-def dbadmin_update(table_name, row_id):
-    """Update a single row (assumes primary key column is 'id')."""
-    if 'user_id' not in session:
-        return "Please login first", 401
-
-    set_clauses = []
-    values = []
-    for key, value in request.form.items():
-        set_clauses.append(f"{key} = %s")
-        values.append(value)
-    values.append(row_id)
-    query = f"UPDATE {table_name} SET {', '.join(set_clauses)} WHERE id = %s"
-    conn = get_db()
-    cur = conn.cursor()
-    try:
-        cur.execute(query, tuple(values))
-        conn.commit()
-    except Exception as e:
-        conn.close()
-        return f"Update error: {e}"
-    conn.close()
-    return redirect(f"/dbadmin/table/{table_name}")
-
-@app.route('/dbadmin/delete/<table_name>/<int:row_id>')
-def dbadmin_delete(table_name, row_id):
-    """Delete a single row (assumes primary key column is 'id')."""
-    if 'user_id' not in session:
-        return "Please login first", 401
-
-    conn = get_db()
-    cur = conn.cursor()
-    try:
-        cur.execute(f"DELETE FROM {table_name} WHERE id = %s", (row_id,))
-        conn.commit()
-    except Exception as e:
-        conn.close()
-        return f"Delete error: {e}"
-    conn.close()
-    return redirect(f"/dbadmin/table/{table_name}")
-
-@app.route('/dbadmin/truncate/<table_name>')
-def dbadmin_truncate(table_name):
-    """Delete all rows from a table and reset auto‑increment."""
-    if 'user_id' not in session:
-        return "Please login first", 401
-
-    conn = get_db()
-    cur = conn.cursor()
-    try:
-        cur.execute(f"TRUNCATE TABLE {table_name} RESTART IDENTITY")
-        conn.commit()
-    except Exception as e:
-        conn.close()
-        return f"Truncate error: {e}"
-    conn.close()
-    return redirect(f"/dbadmin/table/{table_name}")
+# -------------------- DATABASE ADMIN (Optional) --------------------
+# (You can keep or remove this section – it doesn't interfere)
 
 # -------------------- RUN THE APP --------------------
 if __name__ == '__main__':
     init_db()
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    app.run(debug=False, host='0.0.0.0', port=5000)
