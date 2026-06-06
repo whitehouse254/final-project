@@ -78,226 +78,192 @@ class ConfigManager:
 config_manager = ConfigManager()
 
 # -------------------- DATABASE --------------------
-import os
-import sqlite3
-from datetime import datetime
-
-# Import PostgreSQL drivers safely
-try:
-    import psycopg2
-    from psycopg2.extras import DictCursor
-except ImportError:
-    psycopg2 = None
-
 class Database:
     def __init__(self, db_name="supermarket.db"):
-        self.db_url = os.environ.get("DATABASE_URL")
-        
-        if self.db_url and psycopg2:
-            # Connect to Render PostgreSQL Database
-            self.conn = psycopg2.connect(self.db_url)
-            self.cursor = self.conn.cursor(cursor_factory=DictCursor)
-            self.is_postgres = True
-        else:
-            # Fallback to Local Linux Machine SQLite
-            sqlite3.register_adapter(datetime, lambda d: d.isoformat())
-            self.conn = sqlite3.connect(db_name, check_same_thread=False)
-            self.conn.row_factory = sqlite3.Row
-            self.cursor = self.conn.cursor()
-            self.is_postgres = False
-
+        sqlite3.register_adapter(datetime, lambda d: d.isoformat())
+        self.conn = sqlite3.connect(db_name, check_same_thread=False)
+        self.cursor = self.conn.cursor()
         self.create_tables()
         self.run_migrations()
         self.populate_initial_data()
         self.conn.commit()
 
     def create_tables(self):
-        if self.is_postgres:
-            # --- POSTGRESQL SCHEMAS (Render Production) ---
-            tables = [
-                '''CREATE TABLE IF NOT EXISTS products (
-                    id SERIAL PRIMARY KEY,
-                    barcode TEXT UNIQUE,
-                    name TEXT NOT NULL,
-                    category TEXT,
-                    buying_price REAL,
-                    selling_price REAL NOT NULL,
-                    quantity INTEGER DEFAULT 0,
-                    min_stock INTEGER DEFAULT 5,
-                    unit TEXT DEFAULT 'pcs',
-                    supplier TEXT,
-                    expiry_date DATE,
-                    batch_number TEXT,
-                    image_path TEXT,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                );''',
-                '''CREATE TABLE IF NOT EXISTS sales (
-                    id SERIAL PRIMARY KEY,
-                    invoice_no TEXT UNIQUE,
-                    customer_name TEXT,
-                    customer_phone TEXT,
-                    total_amount REAL,
-                    discount REAL DEFAULT 0,
-                    tax REAL DEFAULT 0,
-                    net_amount REAL,
-                    payment_method TEXT,
-                    payments_json TEXT,
-                    cashier TEXT,
-                    sale_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    shift_id INTEGER
-                );''',
-                '''CREATE TABLE IF NOT EXISTS sale_items (
-                    id SERIAL PRIMARY KEY,
-                    invoice_no TEXT,
-                    product_id INTEGER,
-                    product_name TEXT,
-                    quantity INTEGER,
-                    unit_price REAL,
-                    total REAL,
-                    returned BOOLEAN DEFAULT FALSE
-                );''',
-                '''CREATE TABLE IF NOT EXISTS users (
-                    id SERIAL PRIMARY KEY,
-                    username TEXT UNIQUE,
-                    password TEXT,
-                    role TEXT DEFAULT 'cashier',
-                    full_name TEXT,
-                    last_activity TIMESTAMP,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                );''',
-                '''CREATE TABLE IF NOT EXISTS suppliers (
-                    id SERIAL PRIMARY KEY,
-                    name TEXT UNIQUE,
-                    contact_person TEXT,
-                    phone TEXT,
-                    email TEXT,
-                    address TEXT
-                );''',
-                '''CREATE TABLE IF NOT EXISTS stock_movements (
-                    id SERIAL PRIMARY KEY,
-                    product_id INTEGER,
-                    movement_type TEXT,
-                    quantity INTEGER,
-                    reason TEXT,
-                    user_name TEXT,
-                    movement_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                );''',
-                '''CREATE TABLE IF NOT EXISTS returns (
-                    id SERIAL PRIMARY KEY,
-                    original_invoice TEXT,
-                    return_invoice TEXT UNIQUE,
-                    refund_amount REAL,
-                    reason TEXT,
-                    cashier TEXT,
-                    return_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                );''',
-                '''CREATE TABLE IF NOT EXISTS loyalty (
-                    customer_phone TEXT PRIMARY KEY,
-                    customer_name TEXT,
-                    points INTEGER DEFAULT 0,
-                    tier TEXT DEFAULT 'Bronze',
-                    total_spent REAL DEFAULT 0,
-                    joined_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                );''',
-                '''CREATE TABLE IF NOT EXISTS expenses (
-                    id SERIAL PRIMARY KEY,
-                    category TEXT,
-                    amount REAL,
-                    description TEXT,
-                    expense_date DATE,
-                    user_name TEXT
-                );''',
-                '''CREATE TABLE IF NOT EXISTS audit_log (
-                    id SERIAL PRIMARY KEY,
-                    user_name TEXT,
-                    action TEXT,
-                    table_name TEXT,
-                    record_id TEXT,
-                    old_value TEXT,
-                    new_value TEXT,
-                    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                );''',
-                '''CREATE TABLE IF NOT EXISTS shifts (
-                    id SERIAL PRIMARY KEY,
-                    user_id INTEGER,
-                    cashier_name TEXT,
-                    start_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    end_time TIMESTAMP,
-                    total_sales REAL DEFAULT 0,
-                    status TEXT DEFAULT 'active'
-                );''',
-                '''CREATE TABLE IF NOT EXISTS quotations (
-                    id SERIAL PRIMARY KEY,
-                    quote_no TEXT UNIQUE,
-                    customer_name TEXT,
-                    customer_phone TEXT,
-                    quote_date DATE,
-                    expiry_date DATE,
-                    items_json TEXT,
-                    subtotal REAL,
-                    tax REAL,
-                    total REAL,
-                    status TEXT DEFAULT 'draft',
-                    created_by TEXT,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                );''',
-                '''CREATE TABLE IF NOT EXISTS deliveries (
-                    id SERIAL PRIMARY KEY,
-                    invoice_no TEXT,
-                    delivery_address TEXT,
-                    delivery_date DATE,
-                    status TEXT DEFAULT 'pending',
-                    driver_name TEXT,
-                    tracking_info TEXT
-                );''',
-                '''CREATE TABLE IF NOT EXISTS suspended_carts (
-                    id SERIAL PRIMARY KEY,
-                    cart_data TEXT,
-                    customer_name TEXT,
-                    customer_phone TEXT,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                );''',
-                '''CREATE TABLE IF NOT EXISTS cash_drawer (
-                    id SERIAL PRIMARY KEY,
-                    shift_id INTEGER,
-                    opening_amount REAL,
-                    closing_amount REAL,
-                    expected_amount REAL,
-                    actual_amount REAL,
-                    discrepancy REAL,
-                    closed_at TIMESTAMP
-                );''',
-                '''CREATE TABLE IF NOT EXISTS purchase_orders (
-                    id SERIAL PRIMARY KEY,
-                    po_number TEXT UNIQUE,
-                    supplier_name TEXT,
-                    status TEXT DEFAULT 'draft',
-                    items_json TEXT,
-                    total_amount REAL DEFAULT 0,
-                    notes TEXT,
-                    created_by TEXT,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    received_at TIMESTAMP
-                );''',
-                '''CREATE TABLE IF NOT EXISTS notifications (
-                    id SERIAL PRIMARY KEY,
-                    type TEXT,
-                    title TEXT,
-                    message TEXT,
-                    is_read INTEGER DEFAULT 0,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                );'''
-            ]
-            for query in tables:
-                self.cursor.execute(query)
-        else:
-            # --- SQLITE SCHEMAS (Local Fallback) ---
-            self.cursor.executescript('''
-                CREATE TABLE IF NOT EXISTS products (id INTEGER PRIMARY KEY AUTOINCREMENT, barcode TEXT UNIQUE, name TEXT NOT NULL, category TEXT, buying_price REAL, selling_price REAL NOT NULL, quantity INTEGER DEFAULT 0, min_stock INTEGER DEFAULT 5, unit TEXT DEFAULT 'pcs', supplier TEXT, expiry_date DATE, batch_number TEXT, image_path TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);
-                CREATE TABLE IF NOT EXISTS sales (id INTEGER PRIMARY KEY AUTOINCREMENT, invoice_no TEXT UNIQUE, customer_name TEXT, customer_phone TEXT, total_amount REAL, discount REAL DEFAULT 0, tax REAL DEFAULT 0, net_amount REAL, payment_method TEXT, payments_json TEXT, cashier TEXT, sale_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP, shift_id INTEGER);
-                CREATE TABLE IF NOT EXISTS sale_items (id INTEGER PRIMARY KEY AUTOINCREMENT, invoice_no TEXT, product_id INTEGER, product_name TEXT, quantity INTEGER, unit_price REAL, total REAL, returned BOOLEAN DEFAULT 0);
-                CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE, password TEXT, role TEXT DEFAULT 'cashier', full_name TEXT, last_activity TIMESTAMP, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);
-
+        self.cursor.executescript('''
+            CREATE TABLE IF NOT EXISTS products (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                barcode TEXT UNIQUE,
+                name TEXT NOT NULL,
+                category TEXT,
+                buying_price REAL,
+                selling_price REAL NOT NULL,
+                quantity INTEGER DEFAULT 0,
+                min_stock INTEGER DEFAULT 5,
+                unit TEXT DEFAULT 'pcs',
+                supplier TEXT,
+                expiry_date DATE,
+                batch_number TEXT,
+                image_path TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE TABLE IF NOT EXISTS sales (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                invoice_no TEXT UNIQUE,
+                customer_name TEXT,
+                customer_phone TEXT,
+                total_amount REAL,
+                discount REAL DEFAULT 0,
+                tax REAL DEFAULT 0,
+                net_amount REAL,
+                payment_method TEXT,
+                payments_json TEXT,
+                cashier TEXT,
+                sale_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                shift_id INTEGER
+            );
+            CREATE TABLE IF NOT EXISTS sale_items (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                invoice_no TEXT,
+                product_id INTEGER,
+                product_name TEXT,
+                quantity INTEGER,
+                unit_price REAL,
+                total REAL,
+                returned BOOLEAN DEFAULT 0
+            );
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT UNIQUE,
+                password TEXT,
+                role TEXT DEFAULT 'cashier',
+                full_name TEXT,
+                last_activity TIMESTAMP,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE TABLE IF NOT EXISTS suppliers (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT UNIQUE,
+                contact_person TEXT,
+                phone TEXT,
+                email TEXT,
+                address TEXT
+            );
+            CREATE TABLE IF NOT EXISTS stock_movements (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                product_id INTEGER,
+                movement_type TEXT,
+                quantity INTEGER,
+                reason TEXT,
+                user TEXT,
+                movement_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE TABLE IF NOT EXISTS returns (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                original_invoice TEXT,
+                return_invoice TEXT UNIQUE,
+                refund_amount REAL,
+                reason TEXT,
+                cashier TEXT,
+                return_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE TABLE IF NOT EXISTS loyalty (
+                customer_phone TEXT PRIMARY KEY,
+                customer_name TEXT,
+                points INTEGER DEFAULT 0,
+                tier TEXT DEFAULT 'Bronze',
+                total_spent REAL DEFAULT 0,
+                joined_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE TABLE IF NOT EXISTS expenses (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                category TEXT,
+                amount REAL,
+                description TEXT,
+                expense_date DATE,
+                user TEXT
+            );
+            CREATE TABLE IF NOT EXISTS audit_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user TEXT,
+                action TEXT,
+                table_name TEXT,
+                record_id TEXT,
+                old_value TEXT,
+                new_value TEXT,
+                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE TABLE IF NOT EXISTS shifts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER,
+                cashier_name TEXT,
+                start_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                end_time TIMESTAMP,
+                total_sales REAL DEFAULT 0,
+                status TEXT DEFAULT 'active'
+            );
+            CREATE TABLE IF NOT EXISTS quotations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                quote_no TEXT UNIQUE,
+                customer_name TEXT,
+                customer_phone TEXT,
+                quote_date DATE,
+                expiry_date DATE,
+                items_json TEXT,
+                subtotal REAL,
+                tax REAL,
+                total REAL,
+                status TEXT DEFAULT 'draft',
+                created_by TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE TABLE IF NOT EXISTS deliveries (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                invoice_no TEXT,
+                delivery_address TEXT,
+                delivery_date DATE,
+                status TEXT DEFAULT 'pending',
+                driver_name TEXT,
+                tracking_info TEXT
+            );
+            CREATE TABLE IF NOT EXISTS suspended_carts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                cart_data TEXT,
+                customer_name TEXT,
+                customer_phone TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE TABLE IF NOT EXISTS cash_drawer (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                shift_id INTEGER,
+                opening_amount REAL,
+                closing_amount REAL,
+                expected_amount REAL,
+                actual_amount REAL,
+                discrepancy REAL,
+                closed_at TIMESTAMP
+            );
+            CREATE TABLE IF NOT EXISTS purchase_orders (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                po_number TEXT UNIQUE,
+                supplier_name TEXT,
+                status TEXT DEFAULT 'draft',
+                items_json TEXT,
+                total_amount REAL DEFAULT 0,
+                notes TEXT,
+                created_by TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                received_at TIMESTAMP
+            );
+            CREATE TABLE IF NOT EXISTS notifications (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                type TEXT,
+                title TEXT,
+                message TEXT,
+                is_read INTEGER DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        ''')
+        self.conn.commit()
 
     def run_migrations(self):
         migrations = [
