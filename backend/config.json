@@ -1,0 +1,49 @@
+{
+    "company_name": "VICTOR'S SUPER MARKET",
+    "currency": "Ksh",
+    "tax_rates": [
+        {
+            "name": "VAT 16%",
+            "rate": 0.16,
+            "categories": [
+                "general",
+                "electronics",
+                "beverages",
+                "snacks"
+            ]
+        }
+    ],
+    "payment_methods": [
+        "Cash",
+        "Card",
+        "MPESA",
+        "Bank Transfer",
+        "Voucher"
+    ],
+    "loyalty_points_per_ksh": 0.01,
+    "low_stock_threshold": 5,
+    "expiry_warning_days": 15,
+    "auto_backup": true,
+    "backup_interval_days": 1,
+    "receipt_header": "THANK YOU FOR SHOPPING WITH US!",
+    "receipt_footer": "Visit again!",
+    "enable_branch_support": false,
+    "branches": [
+        {
+            "id": 1,
+            "name": "Main Store",
+            "location": "Nairobi"
+        }
+    ],
+    "email_alerts": false,
+    "smtp_host": "",
+    "smtp_port": 587,
+    "smtp_user": "",
+    "smtp_pass": "",
+    "alert_email": "",
+    "mpesa_consumer_key": "",
+    "mpesa_consumer_secret": "",
+    "mpesa_shortcode": "",
+    "mpesa_passkey": "",
+    "mpesa_callback_url": ""
+}
